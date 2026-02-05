@@ -5,25 +5,28 @@ import json
 import os
 from datetime import datetime
 
-# --- 0. 外観の設定（GitHubボタンのみをピンポイントで消す） ---
-# ログイン前は中央寄せ(centered)、ログイン後は広く(wide)するように自動で切り替えます
+# --- 0. 外観の設定（矢印ボタンを残し、GitHubメニューだけ消す） ---
+# ログイン画面をシュッとさせるために最初は centered、ログイン後は wide
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
     st.set_page_config(layout="centered")
 else:
     st.set_page_config(layout="wide")
 
-# ★ GitHubの猫マーク（リンク）だけをピンポイントで消す魔法のCSS
-# ヘッダー（矢印ボタンがある場所）は消さずに、右側のメニューだけを見えなくします
+# 強力な「特定狙い撃ち」のCSS
 hide_github_only = """
     <style>
-    /* 右上の三本線メニューとGitHubリンクを隠す */
-    .stAppDeployButton, div[data-testid="stToolbar"] {
-        visibility: hidden;
+    /* ヘッダー全体を消すのではなく、右側のメニューエリアだけを完全に消す */
+    [data-testid="stToolbar"] {
+        display: none !important;
     }
-    /* 矢印ボタン（サイドバー開閉）は見えるようにする */
-    button[data-testid="stSidebarCollapseButton"] {
+    /* ログイン画面でデカくなりすぎないよう調整 */
+    .stTextInput {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    /* サイドバー開閉ボタン（矢印）は絶対に表示する */
+    header button {
         visibility: visible !important;
-        color: white; /* ダークモードで見えにくい場合のため */
     }
     </style>
     """
@@ -58,12 +61,10 @@ def check_auth(db):
                     if user_data.get("is_enabled", True) and pw == st.secrets["auth"]["password"]:
                         st.session_state.update({"authenticated": True, "is_admin": False, "user_email": email})
                         st.rerun()
-                    elif not user_data.get("is_enabled", True):
-                        st.error("このアカウントは現在停止されています。")
                     else:
-                        st.error("パスワードが違います")
+                        st.error("アクセスできません")
                 else:
-                    st.error("アクセス権がありません")
+                    st.error("登録されていません")
         return False
     return True
 
@@ -80,28 +81,21 @@ if check_auth(db):
             new_user = st.text_input("メアドを入力")
             if st.button("招待を追加"):
                 if new_user:
-                    db.collection("users").document(new_user).set({
-                        "is_enabled": True,
-                        "added_at": datetime.now()
-                    })
-                    st.toast(f"{new_user} を追加しました")
+                    db.collection("users").document(new_user).set({"is_enabled": True, "added_at": datetime.now()})
                     st.rerun()
             
             st.divider()
-            st.subheader("管理リスト")
             users = db.collection("users").stream()
             for u in users:
                 u_data = u.to_dict()
-                u_email = u.id
-                is_enabled = u_data.get("is_enabled", True)
                 col1, col2, col3 = st.columns([3, 2, 1])
-                col1.caption(u_email)
-                label = "✅ 有効" if is_enabled else "🚫 停止中"
-                if col2.button(label, key=f"toggle_{u_email}"):
-                    db.collection("users").document(u_email).update({"is_enabled": not is_enabled})
+                col1.caption(u.id)
+                label = "✅" if u_data.get("is_enabled", True) else "🚫"
+                if col2.button(label, key=f"t_{u.id}"):
+                    db.collection("users").document(u.id).update({"is_enabled": not u_data.get("is_enabled", True)})
                     st.rerun()
-                if col3.button("🗑️", key=f"del_{u_email}"):
-                    db.collection("users").document(u_email).delete()
+                if col3.button("🗑️", key=f"d_{u.id}"):
+                    db.collection("users").document(u.id).delete()
                     st.rerun()
 
     if st.sidebar.button("ログアウト", use_container_width=True):
@@ -111,26 +105,23 @@ if check_auth(db):
     # --- アプリ本体 ---
     st.title("📸 みんなの思い出帳")
 
-    with st.container():
+    with st.form("add_form", clear_on_submit=True):
         st.subheader("新しい思い出を投稿")
-        with st.form("add_form", clear_on_submit=True):
-            target_date = st.date_input("日付", datetime.now())
-            new_comment = st.text_input("内容")
-            uploaded_file = st.file_uploader("写真", type=["jpg", "png", "jpeg"])
-            if st.form_submit_button("保存"):
-                if new_comment:
-                    db.collection("memories").add({
-                        "comment": new_comment,
-                        "date": datetime.combine(target_date, datetime.now().time()),
-                        "author": st.session_state["user_email"]
-                    })
-                    st.success("保存しました！")
-                    st.rerun()
+        target_date = st.date_input("日付", datetime.now())
+        new_comment = st.text_input("内容")
+        uploaded_file = st.file_uploader("写真", type=["jpg", "png", "jpeg"])
+        if st.form_submit_button("保存"):
+            if new_comment:
+                db.collection("memories").add({
+                    "comment": new_comment,
+                    "date": datetime.combine(target_date, datetime.now().time()),
+                    "author": st.session_state["user_email"]
+                })
+                st.success("保存完了！")
+                st.rerun()
 
     st.divider()
     memories = db.collection("memories").order_by("date", direction=firestore.Query.DESCENDING).stream()
     for m in memories:
         data = m.to_dict()
-        d = data.get('date')
-        date_str = d.strftime('%Y/%m/%d') if d else "日付不明"
-        st.info(f"{date_str} | {data.get('comment')} (by {data.get('author')})")
+        st.info(f"{data.get('date').strftime('%Y/%m/%d')} | {data.get('comment')} (by {data.get('author')})")

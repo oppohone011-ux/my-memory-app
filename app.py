@@ -8,15 +8,21 @@ from datetime import datetime
 st.set_page_config(
     page_title="みんなの思い出帳",
     layout="centered",      
-    initial_sidebar_state="expanded" # 最初はメニューを開いておき、ログイン状況を見えるようにします
+    initial_sidebar_state="expanded" 
 )
 
-# GitHubボタンを隠す
+# 【ダークモード対策】文字色を白く固定し、GitHubボタンを隠す
 hide_style = """
             <style>
             #MainMenu {visibility: hidden;}
             header {visibility: hidden;}
             footer {visibility: hidden;}
+            
+            /* サイドバー内の文字をダークモードでも白くハッキリさせる */
+            [data-testid="stSidebar"] .stMarkdown p {
+                color: #FFFFFF !important;
+                font-weight: bold;
+            }
             </style>
             """
 st.markdown(hide_style, unsafe_allow_html=True)
@@ -61,9 +67,10 @@ def check_auth(db):
 db = init_firebase()
 
 if check_auth(db):
-    # --- サイドバー：ここに「ログイン状況」を表示します ---
-    st.sidebar.title("👤 ログイン情報")
-    st.sidebar.success(f"ログイン中:\n{st.session_state['user_email']}")
+    # --- サイドバー：ダークモードでも絶対に見えるように修正 ---
+    st.sidebar.markdown("### 👤 ログイン状況")
+    st.sidebar.markdown(f"**ユーザー:**\n{st.session_state['user_email']}")
+    st.sidebar.divider()
     
     if st.sidebar.button("ログアウト", use_container_width=True):
         st.session_state["authenticated"] = False

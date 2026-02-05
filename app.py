@@ -5,6 +5,18 @@ import json
 import os
 from datetime import datetime
 
+# --- 0. GitHubのコードを見れないようにボタンを隠す設定 ---
+st.set_page_config(layout="wide")
+
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # --- 1. Firebase初期化 ---
 def init_firebase():
     if not firebase_admin._apps:

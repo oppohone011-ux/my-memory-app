@@ -11,17 +11,15 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
-# 【ダークモード対策】文字色を白く固定し、GitHubボタンを隠す
+# ダークモード対策 ＆ GitHubボタン隠し
 hide_style = """
             <style>
             #MainMenu {visibility: hidden;}
             header {visibility: hidden;}
             footer {visibility: hidden;}
-            
-            /* サイドバー内の文字をダークモードでも白くハッキリさせる */
+            /* サイドバー内の文字色を強制的に白くする */
             [data-testid="stSidebar"] .stMarkdown p {
                 color: #FFFFFF !important;
-                font-weight: bold;
             }
             </style>
             """
@@ -67,28 +65,63 @@ def check_auth(db):
 db = init_firebase()
 
 if check_auth(db):
-    # --- サイドバー：ダークモードでも絶対に見えるように修正 ---
+    # --- サイドバー：ログイン状況 ＆ 管理機能 ---
     st.sidebar.markdown("### 👤 ログイン状況")
-    st.sidebar.markdown(f"**ユーザー:**\n{st.session_state['user_email']}")
-    st.sidebar.divider()
+    st.sidebar.write(f"**{st.session_state['user_email']}**")
     
     if st.sidebar.button("ログアウト", use_container_width=True):
         st.session_state["authenticated"] = False
         st.rerun()
 
+    st.sidebar.divider()
+
+    # 🌟 管理者権限がある場合のみ表示される「管理リスト」
     if st.session_state["is_admin"]:
-        with st.sidebar.expander("🛠️ ユーザー管理"):
-            new_user = st.text_input("招待メアド")
-            if st.button("追加"):
-                db.collection("users").document(new_user).set({"is_enabled": True, "added_at": datetime.now()})
+        st.sidebar.subheader("🛠️ ユーザー管理")
+        
+        # 新規追加
+        new_user = st.text_input("新規招待メアド", key="new_user_input")
+        if st.sidebar.button("追加実行"):
+            if new_user:
+                db.collection("users").document(new_user).set({
+                    "is_enabled": True,
+                    "added_at": datetime.now()
+                })
+                st.toast(f"{new_user}を追加しました")
                 st.rerun()
+        
+        st.sidebar.divider()
+        st.sidebar.write("【登録済みリスト】")
+        
+        # ★ここを復活させました！ユーザーの有効/停止/削除
+        users = db.collection("users").stream()
+        for u in users:
+            u_data = u.to_dict()
+            u_email = u.id
+            is_enabled = u_data.get("is_enabled", True)
+            
+            # メールアドレス表示
+            st.sidebar.caption(u_email)
+            
+            col1, col2 = st.sidebar.columns([2, 1])
+            # 有効・停止の切り替えボタン
+            label = "✅ 有効" if is_enabled else "🚫 停止"
+            if col1.button(label, key=f"toggle_{u_email}"):
+                db.collection("users").document(u_email).update({"is_enabled": not is_enabled})
+                st.rerun()
+            
+            # 削除ボタン
+            if col2.button("🗑️", key=f"del_{u_email}"):
+                db.collection("users").document(u_email).delete()
+                st.rerun()
+            st.sidebar.write("---")
 
     # --- アプリ本体 ---
     st.title("📸 みんなの思い出帳")
 
     # 投稿フォーム
-    st.subheader("新しい思い出を投稿")
     with st.form("add_form", clear_on_submit=True):
+        st.subheader("新しい思い出を投稿")
         target_date = st.date_input("日付", datetime.now())
         new_comment = st.text_input("内容")
         uploaded_file = st.file_uploader("写真を選択", type=["jpg", "png", "jpeg"]) 

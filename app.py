@@ -4,14 +4,14 @@ from firebase_admin import credentials, firestore
 import json
 from datetime import datetime
 
-# --- 0. 画面設定（標準的な設定に戻しました） ---
+# --- 0. 画面設定 ---
 st.set_page_config(
     page_title="みんなの思い出帳",
     layout="centered",      
-    initial_sidebar_state="auto" # サイドバーを自由に開閉できる状態
+    initial_sidebar_state="expanded" # 最初はメニューを開いておき、ログイン状況を見えるようにします
 )
 
-# GitHubボタンを隠す設定だけ残しています
+# GitHubボタンを隠す
 hide_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -61,9 +61,9 @@ def check_auth(db):
 db = init_firebase()
 
 if check_auth(db):
-    # --- サイドバー（折りたたみ可能、いつでも戻せます） ---
-    st.sidebar.title("メニュー")
-    st.sidebar.write(f"👤 {st.session_state['user_email']}")
+    # --- サイドバー：ここに「ログイン状況」を表示します ---
+    st.sidebar.title("👤 ログイン情報")
+    st.sidebar.success(f"ログイン中:\n{st.session_state['user_email']}")
     
     if st.sidebar.button("ログアウト", use_container_width=True):
         st.session_state["authenticated"] = False
@@ -71,7 +71,6 @@ if check_auth(db):
 
     if st.session_state["is_admin"]:
         with st.sidebar.expander("🛠️ ユーザー管理"):
-            # 管理機能
             new_user = st.text_input("招待メアド")
             if st.button("追加"):
                 db.collection("users").document(new_user).set({"is_enabled": True, "added_at": datetime.now()})
@@ -80,12 +79,11 @@ if check_auth(db):
     # --- アプリ本体 ---
     st.title("📸 みんなの思い出帳")
 
-    # 投稿フォーム（写真アップロード復活！）
+    # 投稿フォーム
     st.subheader("新しい思い出を投稿")
     with st.form("add_form", clear_on_submit=True):
         target_date = st.date_input("日付", datetime.now())
         new_comment = st.text_input("内容")
-        # ★写真選択を復活させました
         uploaded_file = st.file_uploader("写真を選択", type=["jpg", "png", "jpeg"]) 
         
         if st.form_submit_button("保存"):

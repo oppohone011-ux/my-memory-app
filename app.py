@@ -4,27 +4,19 @@ from firebase_admin import credentials, firestore
 import json
 from datetime import datetime
 
-# --- 0. 画面設定 ---
+# --- 0. 画面設定（標準的な設定に戻しました） ---
 st.set_page_config(
     page_title="みんなの思い出帳",
     layout="centered",      
-    initial_sidebar_state="auto" # ログイン後は自動で最適な状態に
+    initial_sidebar_state="auto" # サイドバーを自由に開閉できる状態
 )
 
-# ダークモードでも見やすく、かつGitHubボタンを隠す設定
+# GitHubボタンを隠す設定だけ残しています
 hide_style = """
             <style>
             #MainMenu {visibility: hidden;}
             header {visibility: hidden;}
             footer {visibility: hidden;}
-            /* ダークモードでの視認性アップ */
-            .stApp {
-                background-color: #0E1117;
-            }
-            /* 入力欄の枠線を少し強調 */
-            .stTextInput>div>div>input {
-                border-color: #4E4E4E;
-            }
             </style>
             """
 st.markdown(hide_style, unsafe_allow_html=True)
@@ -37,22 +29,17 @@ def init_firebase():
         firebase_admin.initialize_app(cred)
     return firestore.client()
 
-# --- 2. 認証・ユーザー管理ロジック ---
+# --- 2. 認証ロジック ---
 def check_auth(db):
     if "authenticated" not in st.session_state:
         st.session_state.update({"authenticated": False, "is_admin": False, "user_email": ""})
 
     if not st.session_state["authenticated"]:
-        # ログイン前はサイドバーを完全に消して中央に集中させる
-        st.markdown("<style>section[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
-        
         st.title("🔒 ログイン")
-        st.write("メールアドレスとパスワードを入力してください")
-        
         email = st.text_input("メールアドレス")
         pw = st.text_input("パスワード", type="password")
         
-        if st.button("ログインして開始", use_container_width=True):
+        if st.button("ログイン", use_container_width=True):
             if email == st.secrets["auth"]["admin_user"] and pw == st.secrets["auth"]["password"]:
                 st.session_state.update({"authenticated": True, "is_admin": True, "user_email": email})
                 st.rerun()
@@ -64,9 +51,9 @@ def check_auth(db):
                         st.session_state.update({"authenticated": True, "is_admin": False, "user_email": email})
                         st.rerun()
                     else:
-                        st.error("パスワードが違うか、アカウントが無効です")
+                        st.error("アクセスできません")
                 else:
-                    st.error("アクセス権がありません")
+                    st.error("登録されていません")
         return False
     return True
 
@@ -74,53 +61,42 @@ def check_auth(db):
 db = init_firebase()
 
 if check_auth(db):
-    # --- ログイン後：サイドバーを復活させる ---
-    # ここでメニューを折り畳めるように表示
-    st.sidebar.title("👤 ユーザー設定")
-    st.sidebar.info(f"ログイン中:\n{st.session_state['user_email']}")
+    # --- サイドバー（折りたたみ可能、いつでも戻せます） ---
+    st.sidebar.title("メニュー")
+    st.sidebar.write(f"👤 {st.session_state['user_email']}")
     
-    if st.session_state["is_admin"]:
-        with st.sidebar.expander("🛠️ ユーザー管理"):
-            new_user = st.text_input("招待するメアド")
-            if st.button("追加"):
-                if new_user:
-                    db.collection("users").document(new_user).set({
-                        "is_enabled": True,
-                        "added_at": datetime.now()
-                    })
-                    st.toast("追加完了！")
-                    st.rerun()
-            
-            st.divider()
-            users = db.collection("users").stream()
-            for u in users:
-                u_data = u.to_dict()
-                col1, col2 = st.columns([2, 1])
-                col1.caption(u.id)
-                if col2.button("🗑️", key=f"del_{u.id}"):
-                    db.collection("users").document(u.id).delete()
-                    st.rerun()
-
     if st.sidebar.button("ログアウト", use_container_width=True):
         st.session_state["authenticated"] = False
         st.rerun()
 
+    if st.session_state["is_admin"]:
+        with st.sidebar.expander("🛠️ ユーザー管理"):
+            # 管理機能
+            new_user = st.text_input("招待メアド")
+            if st.button("追加"):
+                db.collection("users").document(new_user).set({"is_enabled": True, "added_at": datetime.now()})
+                st.rerun()
+
     # --- アプリ本体 ---
     st.title("📸 みんなの思い出帳")
 
-    with st.expander("📝 新しい思い出を投稿する", expanded=False):
-        with st.form("add_form", clear_on_submit=True):
-            target_date = st.date_input("日付", datetime.now())
-            new_comment = st.text_input("内容を入力")
-            if st.form_submit_button("思い出を保存"):
-                if new_comment:
-                    db.collection("memories").add({
-                        "comment": new_comment,
-                        "date": datetime.combine(target_date, datetime.now().time()),
-                        "author": st.session_state["user_email"]
-                    })
-                    st.success("保存完了！")
-                    st.rerun()
+    # 投稿フォーム（写真アップロード復活！）
+    st.subheader("新しい思い出を投稿")
+    with st.form("add_form", clear_on_submit=True):
+        target_date = st.date_input("日付", datetime.now())
+        new_comment = st.text_input("内容")
+        # ★写真選択を復活させました
+        uploaded_file = st.file_uploader("写真を選択", type=["jpg", "png", "jpeg"]) 
+        
+        if st.form_submit_button("保存"):
+            if new_comment:
+                db.collection("memories").add({
+                    "comment": new_comment,
+                    "date": datetime.combine(target_date, datetime.now().time()),
+                    "author": st.session_state["user_email"]
+                })
+                st.success("保存しました！")
+                st.rerun()
 
     st.divider()
     # 投稿一覧
@@ -128,5 +104,5 @@ if check_auth(db):
     for m in memories:
         data = m.to_dict()
         d = data.get('date')
-        date_str = d.strftime('%Y/%m/%d') if d else "不明"
-        st.info(f"📅 {date_str} | {data.get('comment')}\n(by {data.get('author')})")
+        date_str = d.strftime('%Y/%m/%d') if d else ""
+        st.info(f"{date_str} | {data.get('comment')} (by {data.get('author')})")

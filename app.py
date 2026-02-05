@@ -5,13 +5,13 @@ import json
 import os
 from datetime import datetime
 
-# --- 追加：GitHubのリンクを隠し、矢印ボタンは残す設定 ---
-st.set_page_config(layout="wide")
+# --- 追加：GitHubのリンクだけを隠す設定 ---
+# layoutは指定しない（デフォルトのcenteredにする）ことで、ログイン画面の肥大化を防ぎます
 st.markdown("""
     <style>
-    /* 右上のメニューボタン（GitHubリンク含む）を非表示 */
+    /* 右上のツールバー（GitHubリンク等）を非表示 */
     div[data-testid="stToolbar"] { visibility: hidden; }
-    /* 左側のサイドバー開閉ボタン（矢印）は表示 */
+    /* 左側の開閉ボタン（矢印）は表示 */
     button[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
     </style>
     """, unsafe_allow_html=True)

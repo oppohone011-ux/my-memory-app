@@ -6,10 +6,10 @@ from datetime import datetime
 
 # 1. Firebaseの初期化
 if not firebase_admin._apps:
-　import json
-　key_dict = json.loads(st.secrets["firebase_key"])
-　cred = credentials.Certificate(key_dict)
-　firebase_admin.initialize_app(cred)
+    import json
+    key_dict = json.loads(st.secrets["firebase_key"])
+    cred = credentials.Certificate(key_dict)
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
@@ -93,3 +93,4 @@ for m in memories:
                 st.toast("削除しました")
 
                 st.rerun()
+

@@ -1,16 +1,9 @@
 import streamlit as st
-
 import firebase_admin
-
 from firebase_admin import credentials, firestore
-
 import json
-
 import os
-
 from datetime import datetime
-
-
 
 # --- 1. Firebase初期化 ---
 
@@ -26,8 +19,6 @@ def init_firebase():
 
     return firestore.client()
 
-
-
 # --- 2. 認証・ユーザー管理ロジック ---
 
 def check_auth(db):
@@ -35,7 +26,6 @@ def check_auth(db):
     if "authenticated" not in st.session_state:
 
         st.session_state.update({"authenticated": False, "is_admin": False, "user_email": ""})
-
 
 
     if not st.session_state["authenticated"]:
@@ -237,3 +227,4 @@ if check_auth(db):
         data = m.to_dict()
 
         st.info(f"{data.get('date').strftime('%Y/%m/%d')} | {data.get('comment')} (by {data.get('author')})")
+

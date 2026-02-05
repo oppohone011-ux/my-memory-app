@@ -6,12 +6,9 @@ import os
 from datetime import datetime
 
 # --- 追加：GitHubのリンクだけを隠す設定 ---
-# layoutは指定しない（デフォルトのcenteredにする）ことで、ログイン画面の肥大化を防ぎます
 st.markdown("""
     <style>
-    /* 右上のツールバー（GitHubリンク等）を非表示 */
     div[data-testid="stToolbar"] { visibility: hidden; }
-    /* 左側の開閉ボタン（矢印）は表示 */
     button[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -35,21 +32,18 @@ def check_auth(db):
         pw = st.text_input("パスワード", type="password")
         
         if st.button("ログイン"):
-            # A. 管理者チェック
             if email == st.secrets["auth"]["admin_user"] and pw == st.secrets["auth"]["password"]:
                 st.session_state.update({"authenticated": True, "is_admin": True, "user_email": email})
                 st.rerun()
-            # B. 招待ユーザーチェック (Firestore)
             else:
                 user_doc = db.collection("users").document(email).get()
                 if user_doc.exists:
                     user_data = user_doc.to_dict()
-                    # ★「有効(enabled)」かつ「パスワード一致」かチェック
                     if user_data.get("is_enabled", True) and pw == st.secrets["auth"]["password"]:
                         st.session_state.update({"authenticated": True, "is_admin": False, "user_email": email})
                         st.rerun()
                     elif not user_data.get("is_enabled", True):
-                        st.error("このアカウントは現在停止されています。管理者に連絡してください。")
+                        st.error("このアカウントは現在停止されています。")
                     else:
                         st.error("パスワードが違います")
                 else:
@@ -61,53 +55,38 @@ def check_auth(db):
 db = init_firebase()
 
 if check_auth(db):
-    # サイドバー：ユーザー情報とログアウト
     st.sidebar.write(f"👤 {st.session_state['user_email']}")
     
-    # 🌟 スマートな管理画面 (管理者限定)
     if st.session_state["is_admin"]:
         with st.sidebar.expander("🛠️ ユーザー管理システム"):
             st.subheader("新規招待")
             new_user = st.text_input("メアドを入力")
             if st.button("招待を追加"):
                 if new_user:
-                    db.collection("users").document(new_user).set({
-                        "is_enabled": True, # 初期状態は有効
-                        "added_at": datetime.now()
-                    })
-                    st.toast(f"{new_user} を追加しました")
+                    db.collection("users").document(new_user).set({"is_enabled": True, "added_at": datetime.now()})
                     st.rerun()
             
             st.divider()
-            st.subheader("管理リスト")
             users = db.collection("users").stream()
             for u in users:
                 u_data = u.to_dict()
-                u_email = u.id
-                is_enabled = u_data.get("is_enabled", True)
-                
-                # GUIで「有効/無効」を切り替えるスイッチ
                 col1, col2, col3 = st.columns([3, 2, 1])
-                col1.caption(u_email)
-                
-                # 停止/再開ボタン
-                label = "✅ 有効" if is_enabled else "🚫 停止中"
-                if col2.button(label, key=f"toggle_{u_email}"):
-                    db.collection("users").document(u_email).update({"is_enabled": not is_enabled})
+                col1.caption(u.id)
+                label = "✅" if u_data.get("is_enabled", True) else "🚫"
+                if col2.button(label, key=f"user_t_{u.id}"):
+                    db.collection("users").document(u.id).update({"is_enabled": not u_data.get("is_enabled", True)})
                     st.rerun()
-                
-                # 完全に消すボタン
-                if col3.button("🗑️", key=f"del_{u_email}"):
-                    db.collection("users").document(u_email).delete()
+                if col3.button("🗑️", key=f"user_d_{u.id}"):
+                    db.collection("users").document(u.id).delete()
                     st.rerun()
 
     if st.sidebar.button("ログアウト"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-    # --- アプリ本体 ---
     st.title("📸 みんなの思い出帳")
 
+    # 新規投稿フォーム
     with st.container():
         st.subheader("新しい思い出を投稿")
         with st.form("add_form", clear_on_submit=True):
@@ -125,7 +104,43 @@ if check_auth(db):
                     st.rerun()
 
     st.divider()
+
+    # 投稿一覧（更新・削除機能付き）
     memories = db.collection("memories").order_by("date", direction=firestore.Query.DESCENDING).stream()
     for m in memories:
         data = m.to_dict()
-        st.info(f"{data.get('date').strftime('%Y/%m/%d')} | {data.get('comment')} (by {data.get('author')})")
+        m_id = m.id
+        date_str = data.get('date').strftime('%Y/%m/%d')
+        comment = data.get('comment')
+        author = data.get('author')
+
+        # 投稿表示エリア
+        with st.expander(f"📅 {date_str} | {comment} (by {author})", expanded=False):
+            # 編集モードの管理
+            edit_key = f"edit_{m_id}"
+            if edit_key not in st.session_state:
+                st.session_state[edit_key] = False
+
+            if not st.session_state[edit_key]:
+                col1, col2 = st.columns(2)
+                if col1.button("✏️ 編集", key=f"btn_edit_{m_id}"):
+                    st.session_state[edit_key] = True
+                    st.rerun()
+                
+                # 削除ボタン（確認用）
+                if col2.button("🗑️ 削除", key=f"btn_del_{m_id}"):
+                    db.collection("memories").document(m_id).delete()
+                    st.success("削除しました")
+                    st.rerun()
+            else:
+                # 編集フォーム
+                with st.form(f"form_edit_{m_id}"):
+                    new_val = st.text_input("内容を修正", value=comment)
+                    c1, c2 = st.columns(2)
+                    if c1.form_submit_button("更新"):
+                        db.collection("memories").document(m_id).update({"comment": new_val})
+                        st.session_state[edit_key] = False
+                        st.rerun()
+                    if c2.form_submit_button("キャンセル"):
+                        st.session_state[edit_key] = False
+                        st.rerun()

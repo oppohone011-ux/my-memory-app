@@ -5,17 +5,29 @@ import json
 import os
 from datetime import datetime
 
-# --- 0. GitHubのコードを見れないようにボタンを隠す設定 ---
-st.set_page_config(layout="wide")
+# --- 0. 外観の設定（GitHubボタンのみをピンポイントで消す） ---
+# ログイン前は中央寄せ(centered)、ログイン後は広く(wide)するように自動で切り替えます
+if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    st.set_page_config(layout="centered")
+else:
+    st.set_page_config(layout="wide")
 
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
-            footer {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# ★ GitHubの猫マーク（リンク）だけをピンポイントで消す魔法のCSS
+# ヘッダー（矢印ボタンがある場所）は消さずに、右側のメニューだけを見えなくします
+hide_github_only = """
+    <style>
+    /* 右上の三本線メニューとGitHubリンクを隠す */
+    .stAppDeployButton, div[data-testid="stToolbar"] {
+        visibility: hidden;
+    }
+    /* 矢印ボタン（サイドバー開閉）は見えるようにする */
+    button[data-testid="stSidebarCollapseButton"] {
+        visibility: visible !important;
+        color: white; /* ダークモードで見えにくい場合のため */
+    }
+    </style>
+    """
+st.markdown(hide_github_only, unsafe_allow_html=True)
 
 # --- 1. Firebase初期化 ---
 def init_firebase():
@@ -35,22 +47,19 @@ def check_auth(db):
         email = st.text_input("メールアドレス")
         pw = st.text_input("パスワード", type="password")
         
-        if st.button("ログイン"):
-            # A. 管理者チェック
+        if st.button("ログイン", use_container_width=True):
             if email == st.secrets["auth"]["admin_user"] and pw == st.secrets["auth"]["password"]:
                 st.session_state.update({"authenticated": True, "is_admin": True, "user_email": email})
                 st.rerun()
-            # B. 招待ユーザーチェック (Firestore)
             else:
                 user_doc = db.collection("users").document(email).get()
                 if user_doc.exists:
                     user_data = user_doc.to_dict()
-                    # ★「有効(enabled)」かつ「パスワード一致」かチェック
                     if user_data.get("is_enabled", True) and pw == st.secrets["auth"]["password"]:
                         st.session_state.update({"authenticated": True, "is_admin": False, "user_email": email})
                         st.rerun()
                     elif not user_data.get("is_enabled", True):
-                        st.error("このアカウントは現在停止されています。管理者に連絡してください。")
+                        st.error("このアカウントは現在停止されています。")
                     else:
                         st.error("パスワードが違います")
                 else:
@@ -65,7 +74,6 @@ if check_auth(db):
     # サイドバー：ユーザー情報とログアウト
     st.sidebar.write(f"👤 {st.session_state['user_email']}")
     
-    # 🌟 スマートな管理画面 (管理者限定)
     if st.session_state["is_admin"]:
         with st.sidebar.expander("🛠️ ユーザー管理システム"):
             st.subheader("新規招待")
@@ -73,7 +81,7 @@ if check_auth(db):
             if st.button("招待を追加"):
                 if new_user:
                     db.collection("users").document(new_user).set({
-                        "is_enabled": True, # 初期状態は有効
+                        "is_enabled": True,
                         "added_at": datetime.now()
                     })
                     st.toast(f"{new_user} を追加しました")
@@ -86,23 +94,17 @@ if check_auth(db):
                 u_data = u.to_dict()
                 u_email = u.id
                 is_enabled = u_data.get("is_enabled", True)
-                
-                # GUIで「有効/無効」を切り替えるスイッチ
                 col1, col2, col3 = st.columns([3, 2, 1])
                 col1.caption(u_email)
-                
-                # 停止/再開ボタン
                 label = "✅ 有効" if is_enabled else "🚫 停止中"
                 if col2.button(label, key=f"toggle_{u_email}"):
                     db.collection("users").document(u_email).update({"is_enabled": not is_enabled})
                     st.rerun()
-                
-                # 完全に消すボタン
                 if col3.button("🗑️", key=f"del_{u_email}"):
                     db.collection("users").document(u_email).delete()
                     st.rerun()
 
-    if st.sidebar.button("ログアウト"):
+    if st.sidebar.button("ログアウト", use_container_width=True):
         st.session_state["authenticated"] = False
         st.rerun()
 
@@ -129,4 +131,6 @@ if check_auth(db):
     memories = db.collection("memories").order_by("date", direction=firestore.Query.DESCENDING).stream()
     for m in memories:
         data = m.to_dict()
-        st.info(f"{data.get('date').strftime('%Y/%m/%d')} | {data.get('comment')} (by {data.get('author')})")
+        d = data.get('date')
+        date_str = d.strftime('%Y/%m/%d') if d else "日付不明"
+        st.info(f"{date_str} | {data.get('comment')} (by {data.get('author')})")
